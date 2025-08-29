@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DollarSign, Users, Clock, TrendingUp, FileText, Shield, HelpCircle, Lock, Save, X, Edit3, Upload } from 'lucide-react';
+import { DollarSign, Users, Clock, TrendingUp, FileText, Shield, HelpCircle, Lock, Save, X, Edit3 } from 'lucide-react';
 
 const ProjectBudgetApp = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -547,6 +547,9 @@ const ProjectBudgetApp = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-6 border-b border-gray-100">
+                  <h3 className="text-lg font-bold text-gray-900">Cost Breakdown</h3>
+                </div>
                 <div className="p-6 space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-gray-700">Direct Labor</span>
@@ -837,7 +840,4 @@ const ProjectBudgetApp = () => {
   );
 };
 
-export default ProjectBudgetApp;-6 border-b border-gray-100">
-                  <h3 className="text-lg font-bold text-gray-900">Cost Breakdown</h3>
-                </div>
-                <div className="p
+export default ProjectBudgetApp;
