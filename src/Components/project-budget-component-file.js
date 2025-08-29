@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { DollarSign, Users, Clock, TrendingUp, FileText, Shield, HelpCircle, Lock, Save, X, Edit3 } from 'lucide-react';
 
 const ProjectBudgetApp = () => {
@@ -102,8 +104,34 @@ const ProjectBudgetApp = () => {
     monthlyRevenue: 900000,
     laborUtilization: 0.85,
     subcontractorShare: employees.filter(e => e.isSubcontractor).length / Math.max(1, employees.length),
-    annualRaisePct: 0.03
+    annualRaisePct: 0.03,
+    mode: 'simple',
+    roleAdjustments: {}
   });
+
+  // Persist and hydrate from localStorage
+  useEffect(() => {
+    try {
+      const emp = localStorage.getItem('pb_employees');
+      const proj = localStorage.getItem('pb_project');
+      const f = localStorage.getItem('pb_forecast');
+      if (emp) setEmployees(JSON.parse(emp));
+      if (proj) setProjectData(JSON.parse(proj));
+      if (f) setForecast(prev => ({ ...prev, ...JSON.parse(f) }));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem('pb_employees', JSON.stringify(employees)); } catch {}
+  }, [employees]);
+
+  useEffect(() => {
+    try { localStorage.setItem('pb_project', JSON.stringify(projectData)); } catch {}
+  }, [projectData]);
+
+  useEffect(() => {
+    try { localStorage.setItem('pb_forecast', JSON.stringify(forecast)); } catch {}
+  }, [forecast]);
 
   const hasPermission = (permission) => currentUser?.permissions?.[permission] || false;
 
@@ -225,14 +253,55 @@ const ProjectBudgetApp = () => {
 
   const forecastRows = useMemo(() => {
     const months = forecast.months;
+    const hoursPerMonth = 160;
+    const rows = [];
+
+    if (forecast.mode === 'role') {
+      const roles = Array.from(new Set(employees.map(e => e.role || 'Unknown')));
+      // Precompute avg rates per role for direct and subs
+      const roleStats = roles.reduce((acc, role) => {
+        const group = employees.filter(e => (e.role || 'Unknown') === role);
+        const directs = group.filter(e => !e.isSubcontractor);
+        const subs = group.filter(e => e.isSubcontractor);
+        const directAvgRate = directs.length ? directs.reduce((s, e) => s + (e.hourlyRate || 0), 0) / directs.length : 0;
+        const subAvgRate = subs.length ? subs.reduce((s, e) => s + (e.hourlyRate || 0), 0) / subs.length : 0;
+        const headcount = group.length;
+        acc[role] = { directAvgRate, subAvgRate, headcount, directCount: directs.length, subCount: subs.length };
+        return acc;
+      }, {});
+
+      for (let i = 1; i <= months; i++) {
+        let directLabor = 0;
+        let subcontractorLabor = 0;
+        roles.forEach(role => {
+          const adj = forecast.roleAdjustments?.[role] || {};
+          const utilization = (adj.utilization ?? forecast.laborUtilization);
+          const headcount = (adj.headcount ?? roleStats[role].headcount);
+          const subShare = (adj.subcontractorShare ?? (roleStats[role].subCount / Math.max(1, roleStats[role].headcount)));
+          const roleHours = headcount * hoursPerMonth * utilization;
+          const subHours = roleHours * subShare;
+          const directHours = roleHours - subHours;
+          const roleDirectLabor = directHours * roleStats[role].directAvgRate;
+          const roleSubLabor = subHours * roleStats[role].subAvgRate;
+          directLabor += roleDirectLabor;
+          subcontractorLabor += roleSubLabor;
+        });
+        const indirect = directLabor * projectData.indirectCostRate;
+        const total = directLabor + subcontractorLabor + indirect;
+        const revenue = forecast.monthlyRevenue;
+        const profit = revenue - total;
+        rows.push({ month: i, revenue, directLabor, subcontractorLabor, indirect, total, profit });
+      }
+      return rows;
+    }
+
+    // Simple mode
     const direct = employees.filter(e => !e.isSubcontractor);
     const subs = employees.filter(e => e.isSubcontractor);
     const directAvgRate = direct.length ? direct.reduce((s, e) => s + (e.hourlyRate || 0), 0) / direct.length : 0;
     const subAvgRate = subs.length ? subs.reduce((s, e) => s + (e.hourlyRate || 0), 0) / subs.length : 0;
     const totalHeadcount = employees.length;
-    const hoursPerMonth = 160;
 
-    const rows = [];
     for (let i = 1; i <= months; i++) {
       const totalHours = totalHeadcount * hoursPerMonth * forecast.laborUtilization;
       const subHours = totalHours * forecast.subcontractorShare;
@@ -247,6 +316,78 @@ const ProjectBudgetApp = () => {
     }
     return rows;
   }, [forecast, employees, projectData.indirectCostRate]);
+
+  // PDF helpers
+  const exportFinancialSummaryPDF = () => {
+    const doc = new jsPDF();
+    doc.text('Financial Summary', 14, 16);
+    autoTable(doc, {
+      startY: 22,
+      head: [['Metric', 'Value']],
+      body: [
+        ['Contract Value', formatCurrency(projectData.contractValue)],
+        ['Actual Revenue', formatCurrency(projectData.actualRevenue)],
+        ['Total Billable Hours', projectData.totalBillableHours],
+        ['Direct Labor', formatCurrency(metrics.totalDirectLabor)],
+        ['Subcontractor Labor', formatCurrency(metrics.totalSubcontractorLabor)],
+        ['Indirect Costs', formatCurrency(metrics.indirectCosts)],
+        ['Total Costs', formatCurrency(metrics.totalCosts)],
+        ['Profit', formatCurrency(metrics.profit)]
+      ]
+    });
+    doc.save('financial-summary.pdf');
+  };
+
+  const exportTeamUtilizationPDF = () => {
+    const doc = new jsPDF();
+    doc.text('Team Utilization', 14, 16);
+    autoTable(doc, {
+      startY: 22,
+      head: [['Name','Role','Type','Hourly Rate','Actual Hours','Labor Cost']],
+      body: visibleEmployees.map(e => [
+        e.name,
+        e.role,
+        e.isSubcontractor ? 'Contractor' : 'Employee',
+        e.hourlyRate,
+        e.actualHours,
+        Math.round((e.hourlyRate || 0) * (e.actualHours || 0))
+      ])
+    });
+    doc.save('team-utilization.pdf');
+  };
+
+  const exportBudgetVsActualPDF = () => {
+    const doc = new jsPDF();
+    doc.text('Budget vs Actual', 14, 16);
+    autoTable(doc, {
+      startY: 22,
+      head: [['Category','Budget','Actual']],
+      body: [
+        ['Revenue', formatCurrency(projectData.contractValue), formatCurrency(projectData.actualRevenue)],
+        ['Direct Labor', '', formatCurrency(metrics.totalDirectLabor)],
+        ['Subcontractor Labor', '', formatCurrency(metrics.totalSubcontractorLabor)],
+        ['Indirect Costs', '', formatCurrency(metrics.indirectCosts)],
+        ['Total Costs', '', formatCurrency(metrics.totalCosts)],
+        ['Profit', '', formatCurrency(metrics.profit)]
+      ]
+    });
+    doc.save('budget-vs-actual.pdf');
+  };
+
+  // Tab button (fixed to use setActiveTab)
+  const TabButton = ({ id, label, icon: Icon }) => (
+    <button
+      onClick={() => setActiveTab(id)}
+      className={`flex items-center space-x-3 px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
+        activeTab === id
+          ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg transform scale-105'
+          : 'bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900 shadow-sm border border-gray-200'
+      }`}
+    >
+      <Icon size={20} />
+      <span className="font-semibold">{label}</span>
+    </button>
+  );
 
   const StatusBadge = ({ status, variant = 'default' }) => {
     const variants = {
@@ -558,15 +699,24 @@ const ProjectBudgetApp = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
                 <div className="flex items-center space-x-3 mb-4"><div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center"><FileText className="text-blue-600" size={24} /></div><div><h3 className="text-lg font-bold text-gray-900">Financial Summary</h3><p className="text-gray-500 text-sm">Complete financial overview</p></div></div>
-                <button onClick={() => { const rows = [['Metric','Value'], ['Contract Value', projectData.contractValue], ['Actual Revenue', projectData.actualRevenue], ['Total Billable Hours', projectData.totalBillableHours], ['Direct Labor', metrics.totalDirectLabor], ['Subcontractor Labor', metrics.totalSubcontractorLabor], ['Indirect Costs', metrics.indirectCosts], ['Total Costs', metrics.totalCosts], ['Profit', metrics.profit]]; downloadCSV(rows, 'financial-summary.csv'); }} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Generate Report</button>
+                <div className="flex space-x-2">
+                  <button onClick={() => { const rows = [['Metric','Value'], ['Contract Value', projectData.contractValue], ['Actual Revenue', projectData.actualRevenue], ['Total Billable Hours', projectData.totalBillableHours], ['Direct Labor', metrics.totalDirectLabor], ['Subcontractor Labor', metrics.totalSubcontractorLabor], ['Indirect Costs', metrics.indirectCosts], ['Total Costs', metrics.totalCosts], ['Profit', metrics.profit]]; downloadCSV(rows, 'financial-summary.csv'); }} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">CSV</button>
+                  <button onClick={exportFinancialSummaryPDF} className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors">PDF</button>
+                </div>
               </div>
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
                 <div className="flex items-center space-x-3 mb-4"><div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center"><Users className="text-green-600" size={24} /></div><div><h3 className="text-lg font-bold text-gray-900">Team Utilization</h3><p className="text-gray-500 text-sm">Employee hours and productivity</p></div></div>
-                <button onClick={() => { const header = ['Name','Role','Type','Hourly Rate','Actual Hours','Labor Cost']; const rows = [header].concat(visibleEmployees.map(e => [e.name, e.role, e.isSubcontractor ? 'Contractor' : 'Employee', e.hourlyRate, e.actualHours, Math.round((e.hourlyRate || 0) * (e.actualHours || 0))])); downloadCSV(rows, 'team-utilization.csv'); }} className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">Generate Report</button>
+                <div className="flex space-x-2">
+                  <button onClick={() => { const header = ['Name','Role','Type','Hourly Rate','Actual Hours','Labor Cost']; const rows = [header].concat(visibleEmployees.map(e => [e.name, e.role, e.isSubcontractor ? 'Contractor' : 'Employee', e.hourlyRate, e.actualHours, Math.round((e.hourlyRate || 0) * (e.actualHours || 0))])); downloadCSV(rows, 'team-utilization.csv'); }} className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">CSV</button>
+                  <button onClick={exportTeamUtilizationPDF} className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors">PDF</button>
+                </div>
               </div>
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
                 <div className="flex items-center space-x-3 mb-4"><div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center"><TrendingUp className="text-purple-600" size={24} /></div><div><h3 className="text-lg font-bold text-gray-900">Budget vs Actual</h3><p className="text-gray-500 text-sm">Performance analysis</p></div></div>
-                <button onClick={() => { const rows = [['Category','Budget','Actual'], ['Revenue', projectData.contractValue, projectData.actualRevenue], ['Direct Labor','', metrics.totalDirectLabor], ['Subcontractor Labor','', metrics.totalSubcontractorLabor], ['Indirect Costs','', metrics.indirectCosts], ['Total Costs','', metrics.totalCosts], ['Profit','', metrics.profit]]; downloadCSV(rows, 'budget-vs-actual.csv'); }} className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">Generate Report</button>
+                <div className="flex space-x-2">
+                  <button onClick={() => { const rows = [['Category','Budget','Actual'], ['Revenue', projectData.contractValue, projectData.actualRevenue], ['Direct Labor','', metrics.totalDirectLabor], ['Subcontractor Labor','', metrics.totalSubcontractorLabor], ['Indirect Costs','', metrics.indirectCosts], ['Total Costs','', metrics.totalCosts], ['Profit','', metrics.profit]]; downloadCSV(rows, 'budget-vs-actual.csv'); }} className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">CSV</button>
+                  <button onClick={exportBudgetVsActualPDF} className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors">PDF</button>
+                </div>
               </div>
             </div>
           </div>
@@ -579,6 +729,12 @@ const ProjectBudgetApp = () => {
               <p className="text-gray-500 mt-1">Model future budget scenarios</p>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+              <div className="mb-4">
+                <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+                  <button onClick={() => setForecast({ ...forecast, mode: 'simple' })} className={`px-4 py-2 text-sm ${forecast.mode === 'simple' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'}`}>Simple</button>
+                  <button onClick={() => setForecast({ ...forecast, mode: 'role' })} className={`px-4 py-2 text-sm ${forecast.mode === 'role' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'}`}>By Role</button>
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div><label className="block text-xs text-gray-500 mb-1">Months</label><input type="number" min="1" value={forecast.months} onChange={(e) => setForecast({ ...forecast, months: Math.max(1, parseInt(e.target.value || '1', 10)) })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" /></div>
                 <div><label className="block text-xs text-gray-500 mb-1">Monthly Revenue</label><input type="number" value={forecast.monthlyRevenue} onChange={(e) => setForecast({ ...forecast, monthlyRevenue: parseFloat(e.target.value || '0') })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" /></div>
@@ -586,6 +742,30 @@ const ProjectBudgetApp = () => {
                 <div><label className="block text-xs text-gray-500 mb-1">Subcontractor Share %</label><input type="number" value={Math.round(forecast.subcontractorShare * 100)} onChange={(e) => setForecast({ ...forecast, subcontractorShare: Math.min(1, Math.max(0, (parseFloat(e.target.value || '0') / 100))) })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" /></div>
                 <div><label className="block text-xs text-gray-500 mb-1">Annual Raise %</label><input type="number" value={Math.round(forecast.annualRaisePct * 100)} onChange={(e) => setForecast({ ...forecast, annualRaisePct: Math.max(0, (parseFloat(e.target.value || '0') / 100)) })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" /></div>
               </div>
+              {forecast.mode === 'role' && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Role Adjustments</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {Array.from(new Set(employees.map(e => e.role || 'Unknown'))).map(role => (
+                      <div key={role} className="p-3 border rounded-lg">
+                        <div className="text-xs font-medium text-gray-600 mb-2">{role}</div>
+                        <div className="flex items-center space-x-2 mb-2">
+                          <label className="text-xs text-gray-500 w-28">Headcount</label>
+                          <input type="number" className="flex-1 px-2 py-1 border rounded text-sm" value={forecast.roleAdjustments?.[role]?.headcount ?? (employees.filter(e => (e.role || 'Unknown') === role).length)} onChange={(e) => setForecast({ ...forecast, roleAdjustments: { ...forecast.roleAdjustments, [role]: { ...(forecast.roleAdjustments?.[role] || {}), headcount: parseInt(e.target.value || '0', 10) } } })} />
+                        </div>
+                        <div className="flex items-center space-x-2 mb-2">
+                          <label className="text-xs text-gray-500 w-28">Utilization %</label>
+                          <input type="number" className="flex-1 px-2 py-1 border rounded text-sm" value={Math.round(((forecast.roleAdjustments?.[role]?.utilization ?? forecast.laborUtilization) * 100))} onChange={(e) => setForecast({ ...forecast, roleAdjustments: { ...forecast.roleAdjustments, [role]: { ...(forecast.roleAdjustments?.[role] || {}), utilization: Math.min(1, Math.max(0, (parseFloat(e.target.value || '0') / 100))) } } })} />
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <label className="text-xs text-gray-500 w-28">Sub Share %</label>
+                          <input type="number" className="flex-1 px-2 py-1 border rounded text-sm" value={Math.round(((forecast.roleAdjustments?.[role]?.subcontractorShare ?? (employees.filter(e => (e.role || 'Unknown') === role && e.isSubcontractor).length / Math.max(1, employees.filter(e => (e.role || 'Unknown') === role).length))) * 100))} onChange={(e) => setForecast({ ...forecast, roleAdjustments: { ...forecast.roleAdjustments, [role]: { ...(forecast.roleAdjustments?.[role] || {}), subcontractorShare: Math.min(1, Math.max(0, (parseFloat(e.target.value || '0') / 100))) } } })} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="mt-6 overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
