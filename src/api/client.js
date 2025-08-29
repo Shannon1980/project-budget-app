@@ -1,12 +1,21 @@
 const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5179';
 
-const defaultHeaders = {
-  'Content-Type': 'application/json'
+const buildHeaders = () => {
+  const headers = { 'Content-Type': 'application/json' };
+  try {
+    const raw = localStorage.getItem('pb_api_settings');
+    if (raw) {
+      const { tokenType, tokenValue, apiKeyHeader, apiKeyValue } = JSON.parse(raw);
+      if (tokenType === 'bearer' && tokenValue) headers['Authorization'] = `Bearer ${tokenValue}`;
+      if (tokenType === 'apiKey' && apiKeyHeader && apiKeyValue) headers[apiKeyHeader] = apiKeyValue;
+    }
+  } catch {}
+  return headers;
 };
 
 const request = async (path, options = {}) => {
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: defaultHeaders,
+    headers: buildHeaders(),
     ...options
   });
   if (!response.ok) {

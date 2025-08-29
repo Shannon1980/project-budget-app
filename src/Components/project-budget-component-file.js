@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getState, putState } from '../api/client';
 import { DollarSign, Users, Clock, TrendingUp, FileText, Shield, HelpCircle, Lock, Save, X, Edit3 } from 'lucide-react';
+import ApiSettings from './ApiSettings';
 
 const ProjectBudgetApp = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -112,7 +113,7 @@ const ProjectBudgetApp = () => {
   const apiAvailableRef = useRef(false);
   const saveTimerRef = useRef(null);
 
-  const scheduleSave = () => {
+  const scheduleSave = React.useCallback(() => {
     if (!apiAvailableRef.current) return;
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
@@ -122,7 +123,7 @@ const ProjectBudgetApp = () => {
         await putState({ id: 1, employees, projectData, forecast });
       } catch {}
     }, 500);
-  };
+  }, [employees, projectData, forecast]);
 
   // Persist and hydrate from localStorage
   useEffect(() => {
@@ -148,18 +149,20 @@ const ProjectBudgetApp = () => {
 
   useEffect(() => {
     try { localStorage.setItem('pb_employees', JSON.stringify(employees)); } catch {}
-    scheduleSave();
   }, [employees]);
 
   useEffect(() => {
     try { localStorage.setItem('pb_project', JSON.stringify(projectData)); } catch {}
-    scheduleSave();
   }, [projectData]);
 
   useEffect(() => {
     try { localStorage.setItem('pb_forecast', JSON.stringify(forecast)); } catch {}
-    scheduleSave();
   }, [forecast]);
+
+  // Single watcher to save to API (debounced)
+  useEffect(() => {
+    scheduleSave();
+  }, [employees, projectData, forecast, scheduleSave]);
 
   const hasPermission = (permission) => currentUser?.permissions?.[permission] || false;
 
@@ -852,6 +855,10 @@ const ProjectBudgetApp = () => {
                 ))}
               </div>
             </div>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">API Settings</h3>
+              <ApiSettings />
+            </div>
           </div>
         )}
 
@@ -887,12 +894,7 @@ const ProjectBudgetApp = () => {
   );
 };
 
-const TabButton = ({ id, label, icon: Icon }) => (
-  <button onClick={() => window.__setActiveTab?.(id)} className={`flex items-center space-x-3 px-6 py-3 rounded-xl font-medium transition-all duration-200`}>
-    <Icon size={20} />
-    <span className="font-semibold">{label}</span>
-  </button>
-);
+// legacy unused TabButton removed
 
 const MetricCard = ({ title, value, subtitle, icon: Icon, color }) => (
   <div className={`bg-gradient-to-br ${color} p-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300`}>
