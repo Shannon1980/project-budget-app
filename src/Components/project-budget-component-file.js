@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { getState, putState } from '../api/client';
 import { DollarSign, Users, Clock, TrendingUp, FileText, Shield, HelpCircle, Lock, Save, X, Edit3 } from 'lucide-react';
 
 const ProjectBudgetApp = () => {
@@ -108,29 +109,56 @@ const ProjectBudgetApp = () => {
     mode: 'simple',
     roleAdjustments: {}
   });
+  const apiAvailableRef = useRef(false);
+  const saveTimerRef = useRef(null);
+
+  const scheduleSave = () => {
+    if (!apiAvailableRef.current) return;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        await putState({ id: 1, employees, projectData, forecast });
+      } catch {}
+    }, 500);
+  };
 
   // Persist and hydrate from localStorage
   useEffect(() => {
-    try {
-      const emp = localStorage.getItem('pb_employees');
-      const proj = localStorage.getItem('pb_project');
-      const f = localStorage.getItem('pb_forecast');
-      if (emp) setEmployees(JSON.parse(emp));
-      if (proj) setProjectData(JSON.parse(proj));
-      if (f) setForecast(prev => ({ ...prev, ...JSON.parse(f) }));
-    } catch {}
+    (async () => {
+      try {
+        const serverState = await getState();
+        if (serverState?.employees) setEmployees(serverState.employees);
+        if (serverState?.projectData) setProjectData(serverState.projectData);
+        if (serverState?.forecast) setForecast(prev => ({ ...prev, ...serverState.forecast }));
+        apiAvailableRef.current = true;
+      } catch {
+        try {
+          const emp = localStorage.getItem('pb_employees');
+          const proj = localStorage.getItem('pb_project');
+          const f = localStorage.getItem('pb_forecast');
+          if (emp) setEmployees(JSON.parse(emp));
+          if (proj) setProjectData(JSON.parse(proj));
+          if (f) setForecast(prev => ({ ...prev, ...JSON.parse(f) }));
+        } catch {}
+      }
+    })();
   }, []);
 
   useEffect(() => {
     try { localStorage.setItem('pb_employees', JSON.stringify(employees)); } catch {}
+    scheduleSave();
   }, [employees]);
 
   useEffect(() => {
     try { localStorage.setItem('pb_project', JSON.stringify(projectData)); } catch {}
+    scheduleSave();
   }, [projectData]);
 
   useEffect(() => {
     try { localStorage.setItem('pb_forecast', JSON.stringify(forecast)); } catch {}
+    scheduleSave();
   }, [forecast]);
 
   const hasPermission = (permission) => currentUser?.permissions?.[permission] || false;

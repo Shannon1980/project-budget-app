@@ -1,0 +1,31 @@
+{
+  "state": [
+    {
+      "id": 1,
+      "employees": [
+        { "id": 1, "name": "Shannon Gueringer", "role": "PM", "hourlyRate": 96.15, "actualHours": 53, "status": "active", "isSubcontractor": false, "compType": "hourly", "annualSalary": 0 },
+        { "id": 2, "name": "Drew Hynes", "role": "Developer", "hourlyRate": 96.15, "actualHours": 0, "status": "inactive", "isSubcontractor": false, "compType": "hourly", "annualSalary": 0 },
+        { "id": 3, "name": "Uyen Tran", "role": "SA/Eng Lead", "hourlyRate": 84.13, "actualHours": 45, "status": "active", "isSubcontractor": false, "compType": "hourly", "annualSalary": 0 },
+        { "id": 101, "name": "Adrien Abrams", "role": "Data Systems SME", "hourlyRate": 250, "actualHours": 20, "status": "active", "isSubcontractor": true, "company": "BEELINE", "compType": "hourly", "annualSalary": 0 }
+      ],
+      "projectData": {
+        "contractValue": 8079030,
+        "actualRevenue": 5646737.62,
+        "totalBillableHours": 26298.75,
+        "actualHoursToDate": 26656.5,
+        "profitMargin": 0.15,
+        "indirectCostRate": 0.35
+      },
+      "forecast": {
+        "months": 6,
+        "monthlyRevenue": 900000,
+        "laborUtilization": 0.85,
+        "subcontractorShare": 0.25,
+        "annualRaisePct": 0.03,
+        "mode": "simple",
+        "roleAdjustments": {}
+      }
+    }
+  ]
+}
+
