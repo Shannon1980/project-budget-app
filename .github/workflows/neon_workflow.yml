@@ -1,4 +1,4 @@
-name: Neon Database Workflow
+wname: Neon Database Workflow
 
 on:
   push:

@@ -1,0 +1,22 @@
+name: Status Badge
+
+on:
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types: [completed]
+
+jobs:
+  update-readme:
+    if: github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📊 Update status badge
+        run: |
+          # This is a placeholder for future badge updates
+          echo "Pipeline status: ${{ github.event.workflow_run.conclusion }}"
+          echo "Workflow run: ${{ github.event.workflow_run.html_url }}"

@@ -1,5 +1,10 @@
 # Budget Management App
 
+[![CI/CD Pipeline](https://github.com/Shannon1980/project-budget-app/workflows/CI/CD%20Pipeline/badge.svg)](https://github.com/Shannon1980/project-budget-app/actions)
+[![Test Coverage](https://codecov.io/gh/Shannon1980/project-budget-app/branch/master/graph/badge.svg)](https://codecov.io/gh/Shannon1980/project-budget-app)
+[![Security](https://github.com/Shannon1980/project-budget-app/workflows/Security%20Scan/badge.svg)](https://github.com/Shannon1980/project-budget-app/actions)
+[![Performance](https://github.com/Shannon1980/project-budget-app/workflows/Performance%20Test/badge.svg)](https://github.com/Shannon1980/project-budget-app/actions)
+
 A modern, role-based project budget management dashboard built with React and Tailwind CSS.
 
 ## 🚀 Features
@@ -136,6 +141,13 @@ budget-management-app/
 - `npm start` - Runs the app in development mode
 - `npm build` - Builds the app for production
 - `npm test` - Launches the test runner
+- `npm run test:coverage` - Run tests with coverage report
+- `npm run test:pipeline` - Run local CI/CD pipeline tests
+- `npm run lint` - Run ESLint
+- `npm run lint:fix` - Fix ESLint issues automatically
+- `npm run setup-db` - Setup database schema
+- `npm run verify-db` - Verify database setup
+- `npm run test-db` - Test database connection
 - `npm eject` - Ejects from Create React App (irreversible)
 
 ## 🎨 Customization
@@ -154,14 +166,56 @@ To connect to a real backend:
 2. Add authentication service
 3. Implement proper state management (Redux, Context API)
 
+## 🔄 CI/CD Pipeline
+
+This project includes a comprehensive CI/CD pipeline built with GitHub Actions:
+
+### 🚀 Automated Workflows
+
+- **🧪 Testing**: Automated test execution with coverage reporting
+- **🏗️ Building**: Production builds with size analysis
+- **🔒 Security**: Vulnerability scanning and security audits
+- **⚡ Performance**: Lighthouse performance testing
+- **🚀 Deployment**: Automatic deployment to Netlify
+- **📦 Dependencies**: Automated dependency updates with Dependabot
+
+### 📊 Quality Gates
+
+- **Test Coverage**: Minimum 70% coverage required
+- **Performance**: Lighthouse score ≥ 80%
+- **Security**: No high-severity vulnerabilities
+- **Code Quality**: ESLint and Prettier compliance
+
+### 🔧 Local Testing
+
+Test the CI/CD pipeline locally before pushing:
+
+```bash
+npm run test:pipeline
+```
+
+This runs all the same checks that the GitHub Actions pipeline will run.
+
+### 📋 Pipeline Status
+
+Check the status of the CI/CD pipeline:
+- [GitHub Actions](https://github.com/Shannon1980/project-budget-app/actions)
+- [Test Coverage](https://codecov.io/gh/Shannon1980/project-budget-app)
+- [Security Scan](https://github.com/Shannon1980/project-budget-app/security)
+
 ## 🚀 Deployment
 
-### Build for Production
+### Automatic Deployment
+The application automatically deploys to Netlify when changes are pushed to the `master` branch.
+
+### Manual Deployment
+
+#### Build for Production
 ```bash
 npm run build
 ```
 
-### Deploy Options
+#### Deploy Options
 - **Netlify:** Connect your repo for automatic deployments
 - **Vercel:** Zero-config deployment for React apps
 - **GitHub Pages:** Free hosting for open source projects

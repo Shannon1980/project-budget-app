@@ -1,0 +1,235 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ master, main, develop ]
+    types: [opened, synchronize, reopened]
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  # Code Quality Checks
+  code-quality:
+    name: 🔍 Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔍 Run ESLint
+        run: npx eslint src/ --ext .js,.jsx --format json --output-file eslint-report.json || true
+
+      - name: 📊 ESLint Results
+        uses: github/super-linter@v4
+        env:
+          DEFAULT_BRANCH: master
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VALIDATE_JAVASCRIPT_ES: true
+          VALIDATE_JSX: true
+
+      - name: 🎨 Check code formatting
+        run: npx prettier --check "src/**/*.{js,jsx,json,css,md}" || true
+
+  # Test Coverage
+  test-coverage:
+    name: 🧪 Test Coverage
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🧪 Run tests with coverage
+        run: npm run test:coverage
+
+      - name: 📊 Generate coverage report
+        run: |
+          echo "## 📊 Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Coverage |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|----------|" >> $GITHUB_STEP_SUMMARY
+          npx nyc report --reporter=text-summary >> $GITHUB_STEP_SUMMARY
+
+      - name: 📈 Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage/lcov.info
+          flags: pull-request
+          name: codecov-pr
+          fail_ci_if_error: false
+
+  # Build Check
+  build-check:
+    name: 🏗️ Build Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🏗️ Build application
+        run: npm run build
+        env:
+          REACT_APP_VERSION: ${{ github.sha }}
+
+      - name: 📦 Check build size
+        run: |
+          echo "Build size analysis:"
+          du -sh build/
+          echo "Largest files:"
+          find build/ -type f -exec du -h {} + | sort -hr | head -10
+
+  # Security Check
+  security-check:
+    name: 🔒 Security Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔒 Run security audit
+        run: npm audit --audit-level=moderate
+
+      - name: 🔒 Check for known vulnerabilities
+        run: npx audit-ci --moderate
+
+  # Dependency Check
+  dependency-check:
+    name: 📦 Dependency Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 📦 Check for outdated dependencies
+        run: npm outdated || true
+
+      - name: 📦 Check package-lock.json
+        run: |
+          if [ -f package-lock.json ]; then
+            echo "✅ package-lock.json exists"
+          else
+            echo "❌ package-lock.json missing"
+            exit 1
+          fi
+
+  # PR Comment
+  pr-comment:
+    name: 💬 PR Comment
+    runs-on: ubuntu-latest
+    needs: [code-quality, test-coverage, build-check, security-check, dependency-check]
+    if: always()
+    
+    steps:
+      - name: 💬 Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && comment.body.includes('## 🔍 Pull Request Checks')
+            );
+            
+            const status = {
+              'code-quality': '${{ needs.code-quality.result }}',
+              'test-coverage': '${{ needs.test-coverage.result }}',
+              'build-check': '${{ needs.build-check.result }}',
+              'security-check': '${{ needs.security-check.result }}',
+              'dependency-check': '${{ needs.dependency-check.result }}'
+            };
+            
+            const getStatusEmoji = (result) => {
+              switch(result) {
+                case 'success': return '✅';
+                case 'failure': return '❌';
+                case 'cancelled': return '⏹️';
+                default: return '⏳';
+              }
+            };
+            
+            const body = `## 🔍 Pull Request Checks
+            
+            | Check | Status |
+            |-------|--------|
+            | Code Quality | ${getStatusEmoji(status['code-quality'])} |
+            | Test Coverage | ${getStatusEmoji(status['test-coverage'])} |
+            | Build Check | ${getStatusEmoji(status['build-check'])} |
+            | Security Check | ${getStatusEmoji(status['security-check'])} |
+            | Dependency Check | ${getStatusEmoji(status['dependency-check'])} |
+            
+            **Commit:** \`${{ github.sha }}\`
+            **Branch:** \`${{ github.head_ref }}\`
+            
+            ${Object.values(status).every(s => s === 'success') ? '🎉 All checks passed!' : '⚠️ Some checks failed. Please review the details above.'}`;
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
