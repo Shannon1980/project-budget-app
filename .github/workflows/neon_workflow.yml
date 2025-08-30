@@ -62,7 +62,7 @@ jobs:
         REACT_APP_NEON_DATABASE_URL: ${{ secrets.REACT_APP_NEON_DATABASE_URL }}
         
     - name: Deploy to Netlify
-      uses: nwtgck/actions-netlify@v2.0
+      uses: nwtgck/actions-netlify@v3.0
       with:
         publish-dir: './build'
         production-branch: main
