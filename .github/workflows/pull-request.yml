@@ -73,7 +73,7 @@ jobs:
           npx nyc report --reporter=text-summary >> $GITHUB_STEP_SUMMARY
 
       - name: 📈 Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           file: ./coverage/lcov.info
           flags: pull-request
