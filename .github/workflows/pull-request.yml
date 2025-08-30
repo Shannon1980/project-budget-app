@@ -33,7 +33,7 @@ jobs:
         run: npx eslint src/ --ext .js,.jsx --format json --output-file eslint-report.json || true
 
       - name: 📊 ESLint Results
-        uses: github/super-linter@v4
+        uses: github/super-linter@v7
         env:
           DEFAULT_BRANCH: master
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
