@@ -1,10 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { DollarSign, Users, Clock, TrendingUp, FileText, Shield, HelpCircle, Lock, Save, X, Edit3, Search, Filter, Download, Upload, Plus, Trash2, BarChart3, Calculator, AlertCircle, CheckCircle, XCircle, Menu, X as CloseIcon, Smartphone, Monitor, User, Mail, Key } from 'lucide-react';
 
-// For production, use connection pooling
-import { Pool } from 'pg';
-
-// Add this import at the top
+// Import database functions
 import { 
   saveEmployees, 
   loadEmployees, 
@@ -14,15 +11,7 @@ import {
   loadMonthlyAdjustments,
   saveForecastScenarios,
   loadForecastScenarios
-} from './services/neonDatabase';
-
-const pool = new Pool({
-  connectionString: process.env.REACT_APP_NEON_DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
+} from '../services/neonDatabase';
 
 const ProjectBudgetApp = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
